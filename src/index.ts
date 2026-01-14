@@ -2,19 +2,34 @@
  * BTCP Code-Mode
  * Plug-and-play library to enable agents to call BTCP tools via code execution
  *
+ * @example
+ * ```typescript
+ * import { BTCPClient } from '@btcp/client';
+ * import { CodeMode } from '@btcp/code-mode';
+ *
+ * const client = new BTCPClient({ serverUrl: '...' });
+ * const codeMode = new CodeMode();
+ *
+ * // Register tools with code-mode (not client)
+ * codeMode.registerTools('github', githubTools, callGithubTool);
+ *
+ * // Install code-mode tools to client
+ * codeMode.install(client);
+ *
+ * await client.connect();
+ * ```
+ *
  * @packageDocumentation
  */
 
-// Main extension
-export {
-  CodeModeExtension,
-  createCodeModeExtension,
-} from './code-mode-extension.js';
-export type { CodeModeExtensionConfig } from './code-mode-extension.js';
-
-// BTCPClient (can be imported from @btcp/client when available)
-export { BTCPClient } from './btcp-client.js';
-export type { BTCPClientExtension } from './btcp-client.js';
+// Main export
+export { CodeMode, createCodeMode } from './code-mode.js';
+export type {
+  CodeModeConfig,
+  ToolCaller,
+  ToolSource,
+  ToolClient,
+} from './code-mode.js';
 
 // Sandbox
 export { Sandbox, createSandbox } from './sandbox.js';
@@ -73,11 +88,6 @@ export type {
   BTCPToolCallRequest,
   BTCPToolCallResponse,
   BTCPToolRegisterRequest,
-
-  // Client configuration
-  BTCPClientConfig,
-  BTCPClientEvents,
-  BTCPClientEventHandler,
 
   // Code-mode specific
   ToolNamespace,
