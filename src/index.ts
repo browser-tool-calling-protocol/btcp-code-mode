@@ -5,7 +5,17 @@
  * @packageDocumentation
  */
 
-// Main client
+// Main client and extension
+export { BTCPClient } from './btcp-client.js';
+export type { BTCPClientExtension } from './btcp-client.js';
+
+export {
+  CodeModeExtension,
+  createCodeModeExtension,
+} from './code-mode-extension.js';
+export type { CodeModeExtensionConfig } from './code-mode-extension.js';
+
+// Legacy client (deprecated)
 export { CodeModeBtcpClient } from './client.js';
 
 // Sandbox

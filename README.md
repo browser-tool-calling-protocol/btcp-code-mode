@@ -6,11 +6,12 @@ Transform your AI agents from clunky tool callers into efficient code executors.
 
 ## Features
 
+- **Extensible Architecture**: Code-mode is an extension to BTCPClient, allowing flexible composition
 - **Code-based tool execution**: Execute TypeScript code that calls BTCP tools
-- **Automatic interface generation**: TypeScript interfaces auto-generated from tool schemas
+- **Tool Discovery**: Automatically discover and wrap client tools for code execution
+- **Exclusive Mode**: Optionally hide other tools, exposing only code-mode
 - **VM sandbox isolation**: Secure code execution in isolated Node.js VM
-- **Multi-source support**: Register tools from multiple BTCP servers
-- **Tool search**: Discover tools dynamically to reduce context window load
+- **Auto-generated interfaces**: TypeScript interfaces from tool schemas
 - **Full BTCP protocol support**: Compatible with [BTCP specification](https://github.com/browser-tool-calling-protocol/btcp-specification)
 
 ## Installation
@@ -21,34 +22,216 @@ npm install @btcp/code-mode
 
 ## Quick Start
 
+### Using BTCPClient with CodeModeExtension (Recommended)
+
 ```typescript
-import { CodeModeBtcpClient } from '@btcp/code-mode';
+import { BTCPClient, createCodeModeExtension } from '@btcp/code-mode';
 
 // Create client
-const client = await CodeModeBtcpClient.create({
+const client = BTCPClient.create({
   serverUrl: 'http://localhost:8765',
   debug: true,
 });
 
-// Connect and register BTCP tools
+// Create and register code-mode extension
+const codeMode = createCodeModeExtension({
+  executionTimeout: 30000,
+  exclusiveMode: true,  // Only expose code-mode tools
+});
+
+await client.use(codeMode);
 await client.connect();
-await client.registerBtcp({ name: 'browser' });
 
 // Execute tool chain as code
-const { result, logs } = await client.callToolChain(`
-  // Click a button and fill a form
-  await browser.browser_click({ selector: '#login-btn' });
-  await browser.browser_fill({ selector: '#username', value: 'user@example.com' });
-  await browser.browser_fill({ selector: '#password', value: 'secret123' });
-  await browser.browser_click({ selector: '#submit' });
-
-  // Get the result
-  const pageTitle = await browser.browser_get_title({});
-  return { success: true, title: pageTitle };
+const { result, logs } = await codeMode.callToolChain(`
+  // Access discovered tools via the 'tools' namespace
+  const data = await tools.getData({ id: 123 });
+  const processed = await tools.processData({ input: data });
+  return { success: true, result: processed };
 `);
 
-console.log(result); // { success: true, title: 'Dashboard' }
+console.log(result);
 ```
+
+### Registering Custom Tools
+
+```typescript
+import { BTCPClient, createCodeModeExtension } from '@btcp/code-mode';
+
+const client = BTCPClient.create();
+const codeMode = createCodeModeExtension();
+
+// Register a custom tool with the client
+client.registerTool(
+  {
+    name: 'calculateSum',
+    description: 'Calculate the sum of two numbers',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        a: { type: 'number' },
+        b: { type: 'number' },
+      },
+      required: ['a', 'b'],
+    },
+  },
+  async (args) => {
+    return { sum: (args.a as number) + (args.b as number) };
+  }
+);
+
+await client.use(codeMode);
+
+// Tool is now available in code execution
+const { result } = await codeMode.callToolChain(`
+  const sum = await tools.calculateSum({ a: 5, b: 3 });
+  return sum;
+`);
+// result = { sum: 8 }
+```
+
+### Tool Management
+
+```typescript
+// Disable specific tools
+client.disableTool('sensitiveOperation');
+
+// Disable all tools except specific ones
+client.disableAllToolsExcept('callToolChain', 'searchTools');
+
+// Re-enable all tools
+client.enableAllTools();
+
+// Check if a tool is disabled
+const isDisabled = client.isToolDisabled('myTool');
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        BTCPClient                            │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                  Tool Registry                           ││
+│  │  - registerTool(definition, handler)                    ││
+│  │  - disableTool(name) / enableTool(name)                 ││
+│  │  - executeTool(name, args)                              ││
+│  └─────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                  Extensions                              ││
+│  │  ┌─────────────────────────────────────────────────────┐││
+│  │  │              CodeModeExtension                       │││
+│  │  │  - Registers callToolChain, searchTools, etc.       │││
+│  │  │  - Discovers client tools                            │││
+│  │  │  - Executes code in VM sandbox                       │││
+│  │  └─────────────────────────────────────────────────────┘││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+```
+
+## API Reference
+
+### BTCPClient
+
+The base client for BTCP connections with extensible tool management.
+
+```typescript
+const client = BTCPClient.create({
+  serverUrl: 'http://localhost:8765',
+  debug: false,
+  autoReconnect: true,
+});
+```
+
+#### Tool Management
+
+```typescript
+// Register a tool
+client.registerTool(toolDefinition, handler);
+
+// Get all tools (optionally including disabled)
+const tools = client.getTools(includeDisabled);
+
+// Disable/enable tools
+client.disableTool('toolName');
+client.enableTool('toolName');
+client.disableAllToolsExcept('tool1', 'tool2');
+client.enableAllTools();
+
+// Execute a tool
+const result = await client.executeTool('toolName', { arg: 'value' });
+```
+
+#### Extension System
+
+```typescript
+// Register an extension
+await client.use(extension);
+
+// Get an extension
+const codeMode = client.getExtension<CodeModeExtension>('code-mode');
+```
+
+### CodeModeExtension
+
+Extension that enables code-based tool execution.
+
+```typescript
+const codeMode = createCodeModeExtension({
+  executionTimeout: 30000,    // Code execution timeout
+  captureConsole: true,       // Capture console.log output
+  memoryLimit: 128 * 1024 * 1024,  // VM memory limit
+  toolsNamespace: 'tools',    // Namespace for discovered tools
+  autoDiscoverTools: true,    // Auto-discover client tools
+  exclusiveMode: false,       // Disable other tools when active
+});
+```
+
+#### Code Execution
+
+```typescript
+const { result, logs } = await codeMode.callToolChain(`
+  const data = await tools.fetchData({ id: 123 });
+  console.log('Fetched:', data);
+  return data;
+`, 60000);  // Optional timeout override
+
+console.log(result);  // Returned value
+console.log(logs);    // Console output
+```
+
+#### Tool Discovery
+
+```typescript
+// Search for tools
+const results = codeMode.searchTools('click button', 5);
+
+// Get TypeScript interfaces
+const interfaces = codeMode.getToolInterfaces('tools');
+
+// Get compact summary for prompts
+const summary = codeMode.getToolInterfaces(undefined, true);
+```
+
+#### Mode Control
+
+```typescript
+// Enable exclusive mode (only code-mode tools exposed to agents)
+codeMode.enableExclusiveMode();
+
+// Disable exclusive mode (all tools exposed)
+codeMode.disableExclusiveMode();
+```
+
+### Registered Tools
+
+When code-mode is registered, it provides these tools to agents:
+
+| Tool | Description |
+|------|-------------|
+| `callToolChain` | Execute TypeScript code that calls multiple tools |
+| `getToolInterfaces` | Get TypeScript interfaces for available tools |
+| `searchTools` | Search for tools by name or description |
 
 ## Why Code Mode?
 
@@ -58,13 +241,12 @@ Traditional tool calling requires multiple round-trips:
 Agent → Tool Call 1 → Result 1
 Agent → Tool Call 2 → Result 2
 Agent → Tool Call 3 → Result 3
-...
 ```
 
 Code mode executes everything in a single request:
 
 ```
-Agent → Code Block → All Results
+Agent → callToolChain(code) → All Results
 ```
 
 **Benefits:**
@@ -73,124 +255,7 @@ Agent → Code Block → All Results
 - **Better composability** - use variables, loops, conditionals
 - **Type safety** - auto-generated TypeScript interfaces
 
-## API Reference
-
-### CodeModeBtcpClient
-
-#### `create(config?)`
-
-Create a new client instance.
-
-```typescript
-const client = await CodeModeBtcpClient.create({
-  serverUrl: 'http://localhost:8765',  // BTCP server URL
-  sessionId: 'my-session',             // Optional session ID
-  debug: false,                        // Enable debug logging
-  executionTimeout: 30000,             // Code execution timeout (ms)
-  autoReconnect: true,                 // Auto-reconnect on disconnect
-  maxReconnectAttempts: 5,             // Max reconnection attempts
-});
-```
-
-#### `connect()`
-
-Connect to the BTCP server.
-
-```typescript
-await client.connect();
-```
-
-#### `registerBtcp(config)`
-
-Register a BTCP tool source.
-
-```typescript
-await client.registerBtcp({
-  name: 'browser',         // Namespace for tools
-  serverUrl: 'http://...',  // Optional: different server URL
-});
-```
-
-#### `registerManual(config)`
-
-Register tools manually without connecting to a server.
-
-```typescript
-client.registerManual({
-  name: 'custom',
-  tools: [
-    {
-      name: 'my_tool',
-      description: 'Does something useful',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          input: { type: 'string' }
-        },
-        required: ['input']
-      }
-    }
-  ],
-  callTool: async (name, args) => {
-    // Your tool implementation
-    return { result: 'done' };
-  }
-});
-```
-
-#### `callToolChain(code, timeout?)`
-
-Execute TypeScript code with registered tools.
-
-```typescript
-const { result, logs } = await client.callToolChain(`
-  const data = await myNamespace.get_data({ id: 123 });
-  const processed = await myNamespace.process(data);
-  return processed;
-`, 60000);  // Optional timeout override
-
-console.log(result);  // Returned value
-console.log(logs);    // Console output captured during execution
-```
-
-#### `searchTools(query, limit?)`
-
-Search for tools across all registered sources.
-
-```typescript
-const results = client.searchTools('click button', 5);
-// [
-//   { namespace: 'browser', tool: { name: 'browser_click', ... }, score: 75 },
-//   ...
-// ]
-```
-
-#### `getToolInterface(namespace)`
-
-Get TypeScript interface for a namespace.
-
-```typescript
-const interfaces = client.getToolInterface('browser');
-console.log(interfaces);
-// declare namespace browser {
-//   interface BrowserClickInput { selector: string; }
-//   function browser_click(input: BrowserClickInput): Promise<unknown>;
-//   ...
-// }
-```
-
-#### `getCompactToolSummary()`
-
-Get a compact summary of all tools for prompts.
-
-```typescript
-const summary = client.getCompactToolSummary();
-// browser.browser_click({ selector: string }) - Click an element
-// browser.browser_fill({ selector: string, value: string }) - Fill input field
-// ...
-```
-
-### Sandbox Features
+## Sandbox Features
 
 The code execution sandbox provides:
 
@@ -201,22 +266,18 @@ The code execution sandbox provides:
 - **Introspection**: `__interfaces` and `__getToolInterface()` available
 
 ```typescript
-const { result, logs } = await client.callToolChain(`
+const { result, logs } = await codeMode.callToolChain(`
   // Available namespaces
   console.log('Available:', __interfaces);
 
   // Get interface for a namespace
-  const iface = __getToolInterface('browser');
+  const iface = __getToolInterface('tools');
   console.log(iface);
 
   // Use tools
-  const title = await browser.browser_get_title({});
-  console.log('Title:', title);
-
-  return title;
+  const data = await tools.getData({ id: 1 });
+  return data;
 `);
-
-console.log(logs);  // All console output
 ```
 
 ## Error Handling
@@ -229,7 +290,7 @@ import {
 } from '@btcp/code-mode';
 
 try {
-  const { result } = await client.callToolChain(`
+  const { result } = await codeMode.callToolChain(`
     throw new Error('Something went wrong');
   `);
 } catch (error) {
@@ -237,8 +298,6 @@ try {
     console.log('Execution timed out');
   } else if (error instanceof CodeExecutionError) {
     console.log('Code execution failed:', error.message);
-  } else if (error instanceof BTCPConnectionError) {
-    console.log('Connection error:', error.message);
   }
 }
 ```
@@ -263,36 +322,19 @@ client.on('toolCall', (request) => {
 });
 ```
 
-## Integration with BTCP Client
+## Legacy API
 
-This library is designed to work with [@btcp/client](https://github.com/browser-tool-calling-protocol/btcp-client) browser extensions that provide tools.
-
-```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   AI Agent      │     │   BTCP Server    │     │  Browser Client │
-│  (code-mode)    │────▶│   (relay)        │────▶│  (@btcp/client) │
-│                 │◀────│                  │◀────│                 │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-```
-
-## TypeScript Support
-
-Full TypeScript support with auto-generated interfaces:
+The `CodeModeBtcpClient` class is still available for backwards compatibility but is deprecated. Use `BTCPClient` with `CodeModeExtension` instead.
 
 ```typescript
-import {
-  CodeModeBtcpClient,
-  BTCPToolDefinition,
-  ToolChainResult,
-  CodeModeConfig
-} from '@btcp/code-mode';
+// Legacy (deprecated)
+import { CodeModeBtcpClient } from '@btcp/code-mode';
+const client = await CodeModeBtcpClient.create({ serverUrl: '...' });
 
-const config: CodeModeConfig = {
-  serverUrl: 'http://localhost:8765',
-  executionTimeout: 60000,
-};
-
-const client = await CodeModeBtcpClient.create(config);
+// Recommended
+import { BTCPClient, createCodeModeExtension } from '@btcp/code-mode';
+const client = BTCPClient.create({ serverUrl: '...' });
+await client.use(createCodeModeExtension());
 ```
 
 ## License
