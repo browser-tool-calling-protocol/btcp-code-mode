@@ -168,15 +168,6 @@ export type BTCPClientEventHandler<K extends keyof BTCPClientEvents> = BTCPClien
 // Code-Mode Specific Types
 // ============================================================================
 
-export interface CodeModeConfig extends BTCPClientConfig {
-  /** Timeout for code execution in milliseconds */
-  executionTimeout?: number;
-  /** Enable console log capture */
-  captureConsole?: boolean;
-  /** Maximum memory limit for VM (in bytes) */
-  memoryLimit?: number;
-}
-
 export interface ToolNamespace {
   name: string;
   tools: BTCPToolDefinition[];
@@ -193,13 +184,6 @@ export interface CodeExecutionResult {
 export interface ToolChainResult {
   result: unknown;
   logs: string[];
-}
-
-export interface RegisteredToolSource {
-  name: string;
-  type: 'btcp' | 'mcp' | 'http';
-  tools: BTCPToolDefinition[];
-  config?: Record<string, unknown>;
 }
 
 export interface ToolSearchResult {

@@ -5,18 +5,16 @@
  * @packageDocumentation
  */
 
-// Main client and extension
-export { BTCPClient } from './btcp-client.js';
-export type { BTCPClientExtension } from './btcp-client.js';
-
+// Main extension
 export {
   CodeModeExtension,
   createCodeModeExtension,
 } from './code-mode-extension.js';
 export type { CodeModeExtensionConfig } from './code-mode-extension.js';
 
-// Legacy client (deprecated)
-export { CodeModeBtcpClient } from './client.js';
+// BTCPClient (can be imported from @btcp/client when available)
+export { BTCPClient } from './btcp-client.js';
+export type { BTCPClientExtension } from './btcp-client.js';
 
 // Sandbox
 export { Sandbox, createSandbox } from './sandbox.js';
@@ -80,13 +78,11 @@ export type {
   BTCPClientConfig,
   BTCPClientEvents,
   BTCPClientEventHandler,
-  CodeModeConfig,
 
   // Code-mode specific
   ToolNamespace,
   CodeExecutionResult,
   ToolChainResult,
-  RegisteredToolSource,
   ToolSearchResult,
 
   // Executor types

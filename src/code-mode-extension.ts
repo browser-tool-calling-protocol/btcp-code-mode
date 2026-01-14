@@ -14,7 +14,6 @@ import {
   ToolHandler,
   ToolChainResult,
   ToolSearchResult,
-  CodeModeConfig,
 } from './types.js';
 
 /**
